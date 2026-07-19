@@ -13,10 +13,15 @@
 /.github/workflows/                                  @trzr-mck/security-team
 
 # Workspace + lockfile changes are owned by security.
-/package.json /pnpm-workspace.yaml /pnpm-lock.yaml   @trzr-mck/security-team
+# NOTE: CODEOWNERS accepts exactly one pattern per line — multiple patterns on
+# a single line are invalid syntax and GitHub silently skips the line.
+/package.json                                        @trzr-mck/security-team
+/pnpm-workspace.yaml                                 @trzr-mck/security-team
+/pnpm-lock.yaml                                      @trzr-mck/security-team
 
 # Per-package manifests and tsconfigs are owned by security.
-/packages/*/package.json /packages/*/tsconfig.json   @trzr-mck/security-team
+/packages/*/package.json                             @trzr-mck/security-team
+/packages/*/tsconfig.json                            @trzr-mck/security-team
 
 # Single-user owner for one path (CODEOWNERS enforcement fixture).
 /packages/app/src/components/HelloWorld.tsx          @0x64nl

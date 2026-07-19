@@ -1,0 +1,54 @@
+name: POC CI Bot
+
+# Simulates a benign automation bot. Manual trigger only — no schedule.
+on:
+  workflow_dispatch:
+
+# Scoped to exactly what the bot needs to open a PR — nothing broader.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    environment: bot-automation
+    steps:
+      - name: Generate GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # pinned to 3.2.0
+        with:
+          app-id: ${{ secrets.GH_LEGIT_APP_ID }}
+          private-key: ${{ secrets.GH_LEGIT_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pinned to 7.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Update heartbeat file
+        run: |
+          mkdir -p .github/poc-ci-bot
+          cat > .github/poc-ci-bot/last-run.json <<EOF
+          {
+            "lastRunAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "lastRunId": "${{ github.run_id }}"
+          }
+          EOF
+
+      - name: Commit, push, and open PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: poc-ci-bot/heartbeat-${{ github.run_id }}
+        run: |
+          git config user.name "poc-ci-bot[bot]"
+          git config user.email "poc-ci-bot[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add .github/poc-ci-bot/last-run.json
+          git commit -m "chore(poc-ci-bot): heartbeat for run ${{ github.run_id }}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore(poc-ci-bot): heartbeat ${{ github.run_id }}" \
+            --body "Automated heartbeat update from the POC CI bot for run ${{ github.run_id }}." \
+            --base main \
+            --head "$BRANCH"

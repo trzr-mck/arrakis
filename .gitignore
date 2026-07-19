@@ -1,0 +1,33 @@
+# Dependencies / build output
+node_modules/
+dist/
+build/
+
+# pnpm
+.pnpm-store/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS/editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets / credentials — never commit, anywhere in the tree.
+*.pem
+*.key
+secrets/
+terraform.tfvars
+*.auto.tfvars
+.env
+.env.*
+
+# Terraform local state / working dirs (remote backend is authoritative).
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+crash.log

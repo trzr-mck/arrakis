@@ -1,0 +1,17 @@
+# CODEOWNERS — ordered general → specific (GitHub applies the LAST matching rule).
+# Placeholders are resolved before use; see README.
+
+# Default owner for everything.
+*                                                    @trzr-mck/maintainers
+
+# CI/automation config is owned by security.
+/.github/**                                          @trzr-mck/security-team
+
+# Workspace + lockfile changes are owned by security.
+/package.json /pnpm-workspace.yaml /pnpm-lock.yaml   @trzr-mck/security-team
+
+# Per-package manifests and tsconfigs are owned by security.
+/packages/*/package.json /packages/*/tsconfig.json   @trzr-mck/security-team
+
+# Single-user owner for one path (CODEOWNERS enforcement fixture).
+/packages/app/src/components/HelloWorld.tsx          @0x64nl

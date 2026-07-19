@@ -6,11 +6,11 @@ on:
   pull_request_review:
     types: [submitted, dismissed]
 
-permissions: {}   # default GITHUB_TOKEN is unused; the App token does all API work
+permissions: {}  
 
 jobs:
   enforce:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest #TODO version pin
     environment: bot-automation
     steps:
 
@@ -94,3 +94,4 @@ jobs:
             -f state="$state" \
             -f description="$description" \
             -f context="origin-policy"
+          #hihi

@@ -1,5 +1,4 @@
 name: origin-policy
-# something
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -57,6 +56,22 @@ jobs:
           description="Internal PR from a collaborator with write access"
 
           if ! has_write "$author"; then
+            # Exclude both the PR's opening author AND whoever actually authored
+            # the current head commit. These can differ (e.g. a bot opens the PR,
+            # a human pushes a later commit) — anchoring only on $author lets that
+            # human's own approval of their own push count toward the requirement,
+            # the same self-approval-via-non-authorship bypass this whole policy
+            # exists to close.
+            # Pulled via the pull-requests commits list (Pull requests: read),
+            # not the commits API (which needs Contents: read) — this App is
+            # scoped to PR/review/status access only.
+            head_pusher="$(
+              gh api --paginate "/repos/${owner}/${repo}/pulls/${pr_number}/commits" \
+                --jq '.[] | {sha: .sha, login: (.author.login // .committer.login // "")}' \
+              | jq -rs --arg sha "$head_sha" '.[] | select(.sha == $sha) | .login' \
+              | tail -n1
+            )"
+
             latest_json="$(
               gh api --paginate \
                 "/repos/${owner}/${repo}/pulls/${pr_number}/reviews" \
@@ -65,11 +80,12 @@ jobs:
             )"
 
             mapfile -t candidates < <(
-              echo "$latest_json" | jq -r --arg sha "$head_sha" --arg author "$author" '
+              echo "$latest_json" | jq -r --arg sha "$head_sha" --arg author "$author" --arg pusher "$head_pusher" '
                 to_entries[]
                 | select(.value.state == "APPROVED")
                 | select(.value.commit_id == $sha)
                 | select(.key != $author)
+                | select($pusher == "" or .key != $pusher)
                 | .key
               '
             )
@@ -94,4 +110,3 @@ jobs:
             -f state="$state" \
             -f description="$description" \
             -f context="origin-policy"
-          #hihi

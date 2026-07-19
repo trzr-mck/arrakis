@@ -6,7 +6,7 @@ on:
   pull_request_review:
     types: [submitted, dismissed]
 
-permissions: {}   # default GITHUB_TOKEN is unused; the App token does all API work
+permissions: {}
 
 jobs:
   enforce:

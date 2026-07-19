@@ -9,7 +9,7 @@ permissions: {}
 
 jobs:
   enforce:
-    runs-on: ubuntu-latest #TODO version pin
+    runs-on: ubuntu-24.04
     environment: origin-policy
     steps:
 

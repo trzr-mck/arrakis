@@ -4,14 +4,13 @@ name: POC CI Bot
 on:
   workflow_dispatch:
 
-# Scoped to exactly what the bot needs to open a PR — nothing broader.
-permissions:
-  contents: write
-  pull-requests: write
+# The job authenticates exclusively with its App installation token; the
+# workflow's own GITHUB_TOKEN is never used, so it gets no permissions at all.
+permissions: {}
 
 jobs:
   heartbeat:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: bot-automation
     steps:
       - name: Generate GitHub App installation token

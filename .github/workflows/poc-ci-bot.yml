@@ -50,5 +50,5 @@ jobs:
           gh pr create \
             --title "chore(poc-ci-bot): heartbeat ${{ github.run_id }}" \
             --body "Automated heartbeat update from the POC CI bot for run ${{ github.run_id }}." \
-            --base main \
+            --base develop \
             --head "$BRANCH"

@@ -26,6 +26,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REQUIRED_APPROVALS: "2"
+          # Branch namespaces locked by a repository ruleset so ONLY the owning
+          # App can write them (infra/terraform/rulesets.tf -> bot_namespace).
+          # Comma/space separated. A same-repo PR whose head sits under one of
+          # these was necessarily produced by that scoped bot (humans are
+          # ruleset-blocked from pushing there), so it rides the normal
+          # single-approval four-eyes path instead of the fork +1 gate.
+          BOT_BRANCH_PREFIXES: "poc-ci-bot/"
         shell: bash
         run: |
           set -euo pipefail
@@ -36,6 +43,10 @@ jobs:
           pr_number="$(jq -r '.pull_request.number' "$event")"
           author="$(jq -r '.pull_request.user.login' "$event")"
           head_sha="$(jq -r '.pull_request.head.sha' "$event")"
+          head_ref="$(jq -r '.pull_request.head.ref' "$event")"
+          base_repo="$(jq -r '.pull_request.base.repo.full_name' "$event")"
+          # Empty when the fork repo has been deleted — treat that as external too.
+          head_repo="$(jq -r '.pull_request.head.repo.full_name // ""' "$event")"
 
           repo_permission() {
             local login="$1" resp
@@ -52,16 +63,54 @@ jobs:
             esac
           }
 
-          state="success"
-          description="Internal PR from a collaborator with write access"
+          # A same-repo head ref under a ruleset-locked bot namespace can only
+          # have been written by the owning App (the namespace ruleset blocks all
+          # human pushes there), so such a PR is trusted scoped automation.
+          IFS=', ' read -r -a bot_prefixes <<< "${BOT_BRANCH_PREFIXES:-}"
+          is_bot_branch() {
+            local ref="$1" p
+            for p in "${bot_prefixes[@]}"; do
+              [[ -n "$p" && "$ref" == "$p"* ]] && return 0
+            done
+            return 1
+          }
 
-          if ! has_write "$author"; then
-            # Exclude both the PR's opening author AND whoever actually authored
+          # Classify the PR. Only fork/external-origin PRs — and the anomalous
+          # case of an internal branch whose author is neither a write-access
+          # human nor a scoped bot — get the elevated 2-approval fork gate.
+          # Internal write-user PRs and scoped-bot PRs rely on the branch
+          # ruleset's normal single code-owner review (still four-eyes: the bot
+          # cannot approve, and require_last_push_approval blocks self-approval).
+          # FUTURE (planned): fork PRs unconditionally require 2 approvals today.
+          # A later iteration can fold in a contributor-trust score before this
+          # branch — e.g. GitHub account age, prior merged-PR / commit history in
+          # this org, 2FA-enabled, verified email, org-membership — and once a
+          # fork author clears that bar, route them to the single-review path
+          # (elevated=false) so a trusted external contributor is accepted after
+          # 1 review instead of 2. Keep 2 approvals as the safe default for
+          # unknown / low-trust authors, and derive the score from signals the
+          # author cannot cheaply forge (sockpuppet accounts are new, historyless,
+          # and unverified — exactly what such classifiers would catch).
+          if [[ -z "$head_repo" || "$head_repo" != "$base_repo" ]]; then
+            elevated=true;  origin="fork/external-origin PR"
+          elif has_write "$author"; then
+            elevated=false; origin="internal PR from a write-access collaborator"
+          elif is_bot_branch "$head_ref"; then
+            elevated=false; origin="scoped automation in locked namespace ${head_ref}"
+          else
+            elevated=true;  origin="internal PR from a non-write, non-bot author"
+          fi
+
+          if [[ "$elevated" != "true" ]]; then
+            state="success"
+            description="${origin} — four-eyes enforced by branch ruleset"
+          else
+            # Elevated gate: require REQUIRED_APPROVALS approvals from write-access
+            # users, excluding both the PR's opening author AND whoever authored
             # the current head commit. These can differ (e.g. a bot opens the PR,
             # a human pushes a later commit) — anchoring only on $author lets that
             # human's own approval of their own push count toward the requirement,
-            # the same self-approval-via-non-authorship bypass this whole policy
-            # exists to close.
+            # the same self-approval-via-non-authorship bypass this policy closes.
             # Pulled via the pull-requests commits list (Pull requests: read),
             # not the commits API (which needs Contents: read) — this App is
             # scoped to PR/review/status access only.
@@ -98,10 +147,10 @@ jobs:
 
             if [[ "$approvals" -ge "$REQUIRED_APPROVALS" ]]; then
               state="success"
-              description="External-origin PR: ${approvals}/${REQUIRED_APPROVALS} write-access approvals"
+              description="${origin}: ${approvals}/${REQUIRED_APPROVALS} write-access approvals"
             else
               state="failure"
-              description="External-origin PR: ${approvals}/${REQUIRED_APPROVALS} write-access approvals required"
+              description="${origin}: ${approvals}/${REQUIRED_APPROVALS} write-access approvals required"
             fi
           fi
 

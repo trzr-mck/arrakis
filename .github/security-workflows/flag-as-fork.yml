@@ -12,7 +12,6 @@ jobs:
   enforce:
     runs-on: ubuntu-latest
     steps:
-      # NOTE: deliberately no checkout of PR code anywhere in this job.
 
       - name: Generate App token
         id: app-token
@@ -38,9 +37,6 @@ jobs:
           author="$(jq -r '.pull_request.user.login' "$event")"
           head_sha="$(jq -r '.pull_request.head.sha' "$event")"
 
-          # admin | write | read | none. Treat a 404 the same as "none" —
-          # docs don't confirm whether non-collaborators 404 or return
-          # permission:"none"; verify empirically, this covers both.
           repo_permission() {
             local login="$1" resp
             if ! resp="$(gh api "/repos/${owner}/${repo}/collaborators/${login}/permission" 2>/dev/null)"; then

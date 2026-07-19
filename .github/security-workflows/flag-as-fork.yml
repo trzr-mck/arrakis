@@ -1,0 +1,99 @@
+name: origin-policy
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}   # default GITHUB_TOKEN is unused; the App token does all API work
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    steps:
+      # NOTE: deliberately no checkout of PR code anywhere in this job.
+
+      - name: Generate App token
+        id: app-token
+        uses: actions/create-github-app-token@<pinned-full-SHA>
+        with:
+          app-id: ${{ vars.ORIGIN_POLICY_APP_ID }}
+          private-key: ${{ secrets.ORIGIN_POLICY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Evaluate origin policy
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REQUIRED_APPROVALS: "2"
+        shell: bash
+        run: |
+          set -euo pipefail
+          event="$GITHUB_EVENT_PATH"
+
+          owner="$(jq -r '.repository.owner.login' "$event")"
+          repo="$(jq -r '.repository.name' "$event")"
+          pr_number="$(jq -r '.pull_request.number' "$event")"
+          author="$(jq -r '.pull_request.user.login' "$event")"
+          head_sha="$(jq -r '.pull_request.head.sha' "$event")"
+
+          # admin | write | read | none. Treat a 404 the same as "none" —
+          # docs don't confirm whether non-collaborators 404 or return
+          # permission:"none"; verify empirically, this covers both.
+          repo_permission() {
+            local login="$1" resp
+            if ! resp="$(gh api "/repos/${owner}/${repo}/collaborators/${login}/permission" 2>/dev/null)"; then
+              echo "none"; return
+            fi
+            echo "$resp" | jq -r '.permission // "none"'
+          }
+
+          has_write() {
+            case "$(repo_permission "$1")" in
+              admin|write) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          state="success"
+          description="Internal PR from a collaborator with write access"
+
+          if ! has_write "$author"; then
+            latest_json="$(
+              gh api --paginate \
+                "/repos/${owner}/${repo}/pulls/${pr_number}/reviews" \
+                --jq '.[] | {login: .user.login, state: .state, commit_id: .commit_id}' \
+              | jq -s 'reduce .[] as $r ({}; .[$r.login] = $r)'
+            )"
+
+            mapfile -t candidates < <(
+              echo "$latest_json" | jq -r --arg sha "$head_sha" --arg author "$author" '
+                to_entries[]
+                | select(.value.state == "APPROVED")
+                | select(.value.commit_id == $sha)
+                | select(.key != $author)
+                | .key
+              '
+            )
+
+            approvals=0
+            for login in "${candidates[@]}"; do
+              [[ -z "$login" || "$login" == "null" ]] && continue
+              has_write "$login" && approvals=$((approvals + 1))
+            done
+
+            if [[ "$approvals" -ge "$REQUIRED_APPROVALS" ]]; then
+              state="success"
+              description="External-origin PR: ${approvals}/${REQUIRED_APPROVALS} write-access approvals"
+            else
+              state="failure"
+              description="External-origin PR: ${approvals}/${REQUIRED_APPROVALS} write-access approvals required"
+            fi
+          fi
+
+          gh api --method POST \
+            "/repos/${owner}/${repo}/statuses/${head_sha}" \
+            -f state="$state" \
+            -f description="$description" \
+            -f context="origin-policy"

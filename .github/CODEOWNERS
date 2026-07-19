@@ -7,6 +7,11 @@
 # CI/automation config is owned by security.
 /.github/**                                          @trzr-mck/security-team
 
+# Workflow authorship is explicitly security-team-only. GitHub has no separate
+# "who may create workflows" permission; this CODEOWNERS rule + code-owner
+# review IS that control — any added/changed workflow needs security-team sign-off.
+/.github/workflows/                                  @trzr-mck/security-team
+
 # Workspace + lockfile changes are owned by security.
 /package.json /pnpm-workspace.yaml /pnpm-lock.yaml   @trzr-mck/security-team
 

@@ -1,0 +1,41 @@
+name: CI
+
+# Produces the `build` and `test` check contexts required by the four-eyes
+# ruleset (infra/terraform/rulesets.tf, var.required_status_checks).
+#
+# PUBLIC + FORK-SAFE by construction:
+#   - `pull_request` (NOT `pull_request_target`): fork code runs in an untrusted
+#     context with a read-only GITHUB_TOKEN and no access to repo/org secrets.
+#   - `permissions: contents: read`: least privilege; CI can never write or
+#     approve. External fork runs still require maintainer approval before they
+#     execute (org setting, infra/bootstrap.sh fork-pr-contributor-approval).
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pinned to 7.0.0
+      - name: Enable pnpm
+        run: npm install -g pnpm
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+      - name: Build
+        run: pnpm -r --if-present build
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pinned to 7.0.0
+      - name: Enable pnpm
+        run: npm install -g pnpm
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+      - name: Test
+        run: pnpm -r --if-present test

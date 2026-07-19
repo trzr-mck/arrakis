@@ -10,7 +10,7 @@ permissions: {}
 jobs:
   enforce:
     runs-on: ubuntu-latest #TODO version pin
-    environment: bot-automation
+    environment: origin-policy
     steps:
 
       - name: Generate App token

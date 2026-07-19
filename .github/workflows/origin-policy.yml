@@ -1,5 +1,5 @@
 name: origin-policy
-
+# something
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -11,13 +11,14 @@ permissions: {}   # default GITHUB_TOKEN is unused; the App token does all API w
 jobs:
   enforce:
     runs-on: ubuntu-latest
+    environment: bot-automation
     steps:
 
       - name: Generate App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # pinned to 3.2.0
         with:
-          app-id: ${{ vars.ORIGIN_POLICY_APP_ID }}
+          client-id: ${{ vars.ORIGIN_POLICY_APP_ID }}
           private-key: ${{ secrets.ORIGIN_POLICY_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}

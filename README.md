@@ -25,3 +25,9 @@ This workflow is defined in a ruleset as a check required to pass the PR.
 
 <img width="901" height="534" alt="image" src="https://github.com/user-attachments/assets/b72a0329-a6cf-4d12-a3f8-bfc48c5f208c" />
 
+In this PR it failed, because I was the last commiter, so I don't count towards approves.
+[40](https://github.com/trzr-mck/arrakis/pull/49)
+In this PR the chceks ran successfully:
+[51](https://github.com/trzr-mck/arrakis/pull/51)
+Sanity check:
+[52](https://github.com/trzr-mck/arrakis/pull/52)

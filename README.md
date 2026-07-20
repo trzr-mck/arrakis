@@ -2,7 +2,8 @@
 
 Based on: https://github.com/trezor/trezor-suite/pull/24825
 
-Evidence PR: https://github.com/trzr-mck/arrakis/pull/47
+[Evidence PR:] https://github.com/trzr-mck/arrakis/pull/47
+[PR #57](https://github.com/trzr-mck/arrakis/pull/57) left open for reference
 
 <img width="1415" height="464" alt="image" src="https://github.com/user-attachments/assets/3170de54-9272-4a81-8184-f85d1312a6e7" />
 
@@ -22,6 +23,7 @@ It also assumes that a regular contributor does not have access to the credentia
 
 When pushing to branches created by bots, a separate ruleset will be created that only enforces review of the last commit. There are edge cases where it would be possible to commit to a branch and then let the bot commit to the branch again, but that comes down to workflow and credential hygiene. Mechanisms to check for this do not natively exist, and implementing them would be a **"selmostroj"**.
 
+
 # Scenario 2
 
 The same attack vector, via a fork, is handled. However, there is one vector that can't be handled: a malicious user creates a sockpuppet account, forks the repo, creates the PR, and approves it from their own work account.
@@ -37,3 +39,4 @@ The only thing that works for this use case is a custom workflow that is heavily
 - In [PR #49](https://github.com/trzr-mck/arrakis/pull/49), the check failed because I was the last committer, so my approval didn't count.
 - In [PR #51](https://github.com/trzr-mck/arrakis/pull/51), the checks ran successfully.
 - [PR #52](https://github.com/trzr-mck/arrakis/pull/52) is a sanity check.
+- [PR #56](https://github.com/trzr-mck/arrakis/pull/56) left open for visibility.

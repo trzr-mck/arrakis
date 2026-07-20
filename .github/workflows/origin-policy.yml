@@ -1,9 +1,23 @@
 name: origin-policy
+
+# Trusted half of the fork-only 2-approval gate. Started by the completion of
+# origin-policy-detect.yml (see that file for WHY the work is split in two).
+#
+# workflow_run always runs from the base repo's default branch in the trusted
+# context, WITH access to this repo's Actions secrets/variables — even when the
+# run that triggered it came from a fork PR. That is exactly the property the
+# detector→evaluator split buys us: the App token can be minted here on fork
+# PRs, which is impossible in a pull_request_review-triggered run on a public
+# repo.
+#
+# The detector hands over only the PR number (an unforgeable, GitHub-assigned
+# integer). Everything security-relevant — author, head SHA, PR origin, the
+# approval set — is re-derived here from the API using the App token, so no
+# attacker-influenced data from the untrusted run is trusted.
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-  pull_request_review:
-    types: [submitted, dismissed]
+  workflow_run:
+    workflows: ["origin-policy-detect"]
+    types: [completed]
 
 permissions: {}
 
@@ -11,7 +25,23 @@ jobs:
   enforce:
     runs-on: ubuntu-24.04
     environment: origin-policy
+    # Only act when the detector actually produced its artifact. A cancelled or
+    # failed detector run has nothing to evaluate.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      # Download the PR-number artifact from the triggering run. This is the
+      # workflow's OWN GITHUB_TOKEN; the origin-policy evaluation itself uses the
+      # App token minted below, not this token.
+      actions: read
     steps:
+
+      - name: Download PR number
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # pinned to 8.0.1
+        with:
+          name: origin-policy-pr
+          path: pr
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
       - name: Generate App token
         id: app-token
@@ -26,6 +56,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REQUIRED_APPROVALS: "2"
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
           # Branch namespaces locked by a repository ruleset so ONLY the owning
           # App can write them (infra/terraform/rulesets.tf -> bot_namespace).
           # Comma/space separated. A same-repo PR whose head sits under one of
@@ -36,17 +68,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          event="$GITHUB_EVENT_PATH"
+          owner="$OWNER"
+          repo="$REPO"
 
-          owner="$(jq -r '.repository.owner.login' "$event")"
-          repo="$(jq -r '.repository.name' "$event")"
-          pr_number="$(jq -r '.pull_request.number' "$event")"
-          author="$(jq -r '.pull_request.user.login' "$event")"
-          head_sha="$(jq -r '.pull_request.head.sha' "$event")"
-          head_ref="$(jq -r '.pull_request.head.ref' "$event")"
-          base_repo="$(jq -r '.pull_request.base.repo.full_name' "$event")"
+          # The detector persisted only the PR number. Validate it is a bare
+          # integer before trusting it in an API path.
+          pr_number="$(tr -d '[:space:]' < pr/number)"
+          if ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+            echo "invalid PR number from detector artifact: '$pr_number'" >&2
+            exit 1
+          fi
+
+          # Re-derive every security-relevant field fresh from the API in this
+          # trusted context — do NOT trust anything else from the detector run.
+          pr_json="$(gh api "/repos/${owner}/${repo}/pulls/${pr_number}")"
+          author="$(jq -r '.user.login' <<<"$pr_json")"
+          head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref' <<<"$pr_json")"
+          base_repo="$(jq -r '.base.repo.full_name' <<<"$pr_json")"
           # Empty when the fork repo has been deleted — treat that as external too.
-          head_repo="$(jq -r '.pull_request.head.repo.full_name // ""' "$event")"
+          head_repo="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
 
           repo_permission() {
             local login="$1" resp

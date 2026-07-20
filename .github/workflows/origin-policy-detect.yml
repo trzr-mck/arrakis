@@ -1,0 +1,58 @@
+name: origin-policy-detect
+
+# Untrusted half of the fork-only 2-approval gate. Pairs with origin-policy.yml
+# (the trusted evaluator this feeds via workflow_run).
+#
+# WHY THE SPLIT EXISTS — the bug it fixes:
+# trzr-mck/arrakis is a PUBLIC repo. On a public repo GitHub runs any workflow
+# triggered by *fork*-PR activity in the untrusted fork context with NO secrets
+# and a read-only token — and that includes pull_request_review. Only
+# pull_request_target is special-cased to run in the trusted base context with
+# secrets, and that special-casing is not something a repo setting can extend
+# (the "send secrets to fork PR workflows" toggle only exists for PRIVATE repos).
+#
+# So a single workflow that both reacts to reviews AND mints an App token cannot
+# work on fork PRs: the review-triggered run gets "Secret source: None",
+# vars.ORIGIN_POLICY_APP_ID resolves to empty, and actions/create-github-app-token
+# dies with "client-id must be non-empty" BEFORE any approval is counted or any
+# commit status is posted. The gate then stays red on a fork PR no matter how
+# many people approve, because the only trigger that reacts to approvals
+# (pull_request_review) is dead there.
+#
+# The fix is the standard two-workflow split: this detector runs in the
+# untrusted context, needs NO secrets, and does nothing but record the PR
+# number. Its completion fires a workflow_run that starts origin-policy.yml in
+# the TRUSTED base-branch context, where the App secret/var are available.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+# No secrets, no writes. The sole output is an artifact carrying the PR number.
+permissions: {}
+
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record PR number
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Persist ONLY the PR number. GitHub assigns it; a fork cannot forge
+          # it. The trusted evaluator re-derives every security-relevant field
+          # (author, head SHA, origin, approvals) itself via the API, so nothing
+          # written from this untrusted context is trusted beyond this integer.
+          mkdir -p pr
+          printf '%s\n' "$PR_NUMBER" > pr/number
+
+      - name: Upload PR number
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # pinned to 7.0.1
+        with:
+          name: origin-policy-pr
+          path: pr/
+          retention-days: 1
+          if-no-files-found: error

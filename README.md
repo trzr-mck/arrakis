@@ -20,8 +20,6 @@ It also assumes that a regular contributor does not have access to the credentia
 
 **Protection 3:** Require review from CODEOWNERS, the first line of defense to protect workflow files.
 
-**Protection 4:** *(only possible in private repos)* A push-based ruleset to lock workflows, with bypass only from the security team, adding another layer of protection.
-
 When pushing to branches created by bots, a separate ruleset will be created that only enforces review of the last commit. There are edge cases where it would be possible to commit to a branch and then let the bot commit to the branch again, but that comes down to workflow and credential hygiene. Mechanisms to check for this do not natively exist, and implementing them would be a **"selmostroj"**.
 
 # Scenario 2

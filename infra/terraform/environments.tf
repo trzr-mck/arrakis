@@ -104,6 +104,26 @@ resource "github_repository_environment" "origin_policy" {
 }
 
 # -----------------------------------------------------------------------------
+# Deployment environment for the "test" workflow (test.yml).
+# This job never authenticates as anything (permissions: {} in the workflow,
+# no App token step) and only reads files already in its own checkout — there
+# are no credentials or write access in scope for a reviewer gate or branch
+# policy to protect. It exists as its own environment purely to keep this
+# job's identity/scope visible and separate from the credentialed
+# environments above, not for access control. Deliberately unrestricted so it
+# runs on every push and every PR — including forks — with no maintainer
+# trigger required.
+# -----------------------------------------------------------------------------
+
+resource "github_repository_environment" "tests" {
+  repository  = github_repository.poc.name
+  environment = "tests"
+
+  # No reviewers block and no deployment_branch_policy block: unrestricted,
+  # on purpose (see comment above).
+}
+
+# -----------------------------------------------------------------------------
 # Environment secrets — DELIBERATELY NOT MANAGED IN TERRAFORM.
 #
 # Set these with gh instead, after the environment exists, so the App private

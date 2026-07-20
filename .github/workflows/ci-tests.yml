@@ -1,0 +1,100 @@
+name: ci-tests
+
+# Credential-LESS test suite. Runs on fork PRs WITHOUT a maintainer having to
+# click "Approve and run" first.
+#
+# Why pull_request_target (and not pull_request):
+#   The org/repo setting fork-pr-contributor-approval = all_external_contributors
+#   (infra/bootstrap.sh) gates every `pull_request` run from an outside
+#   contributor behind a manual "Approve and run". `pull_request_target` runs in
+#   the base-repo context and is exempt from that gate, so this workflow starts
+#   itself. The credentialed gate stays on the *other* workflow (origin-policy),
+#   which waits for a write-access reviewer via the `origin-policy` environment.
+#
+# The tradeoff this makes explicit:
+#   Auto-running tests means the fork's proposed code executes with no prior
+#   human approval. That is a deliberate, scoped relaxation of the "no fork code
+#   runs until approved" posture — bounded by the `test` job sandbox below, which
+#   holds NOTHING worth stealing: zero token scopes, and it references NO secrets,
+#   so the App private keys are unreachable from it. Residual risk is limited to
+#   runner compute/egress abuse (accepted); it cannot mint a bot token, write to
+#   the repo, or read a secret.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# Workflow-wide default: no GITHUB_TOKEN scopes. Individual jobs opt back in to
+# only what they need (the `report` job takes statuses:write; `test` stays {}).
+permissions: {}
+
+jobs:
+  # --------------------------------------------------------------------------
+  # UNTRUSTED: executes the fork's proposed code. Must hold no credential.
+  # --------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-24.04
+    permissions: {}          # zero token scopes; references no secrets.*
+    # Deliberately NO `environment:` — there is no credential here to gate.
+    steps:
+      - name: Checkout PR head (UNTRUSTED fork code)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pinned to 7.0.0
+        with:
+          # Test the fork's actually-proposed commit, not the base branch.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Leave no credential behind in .git/config for fork scripts to reuse.
+          persist-credentials: false
+
+      # Use the runner's preinstalled Node + corepack rather than pulling in
+      # extra third-party setup actions (smaller pinned-supply-chain surface,
+      # consistent with the rest of this repo). pnpm version tracks the root
+      # package.json packageManager field.
+      - name: Enable pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
+
+      - name: Install (block fork lifecycle hooks)
+        # --ignore-scripts stops a malicious fork from running arbitrary code via
+        # a dependency/postinstall hook during install. Our own workspace build
+        # is invoked explicitly below.
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
+
+  # --------------------------------------------------------------------------
+  # TRUSTED: runs base-repo code only (NO fork checkout), so it can safely hold
+  # statuses:write. Publishes the `test` outcome as a commit status on the PR
+  # HEAD sha. Needed because a pull_request_target run's auto check attaches to
+  # the base sha, not the PR head — the same reason origin-policy.yml POSTs its
+  # status explicitly. This is what lets `ci-tests` be pinned as a required
+  # status check in the ruleset (infra/terraform + tfvars).
+  # --------------------------------------------------------------------------
+  report:
+    needs: test
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      statuses: write
+    steps:
+      - name: Post ci-tests status to PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.test.result }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RESULT" == "success" ]]; then
+            state="success"; description="tests passed"
+          else
+            state="failure"; description="tests ${RESULT}"
+          fi
+          gh api --method POST \
+            "/repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state="$state" \
+            -f description="$description" \
+            -f context="ci-tests"

@@ -35,6 +35,7 @@ self-approval bypass. Authenticates as a **GitHub App installation**
 | Resource | Control | Mitigates |
 |---|---|---|
 | `github_repository_ruleset.four_eyes_core` | `require_last_push_approval`, `dismiss_stale_reviews_on_push`, 1 approval, code-owner review, empty `bypass_actors` | **CICD-SEC-1** Insufficient Flow Control Mechanisms |
+| `github_repository_ruleset.workflow_authorship_lock` (push ruleset) | `file_path_restriction` on `.github/workflows/**`, evaluated on every push to any branch; sole bypass = `security-team` (the CODEOWNERS of `.github/**`) | **CICD-SEC-1** / **CICD-SEC-7** — pipeline-definition tampering (only the security team may author workflow changes; four-eyes review still gates the merge) |
 | `github_organization_settings` | `default_repository_permission = "read"`, no member-created public repos | **CICD-SEC-2** Inadequate Identity & Access Management |
 | `github_team*` resources | Write access only via explicit team grants | **CICD-SEC-2** |
 | `github_repository_ruleset.bot_namespace` | Bot branch prefixes locked to the owning App installation only | **CICD-SEC-5** Insufficient PBAC (pipeline identities can only write where registered) |

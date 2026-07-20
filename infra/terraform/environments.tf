@@ -63,13 +63,15 @@ resource "github_repository_environment_deployment_policy" "bot_automation" {
 # Deployment environment for the origin-policy App (origin-policy.yml).
 # Mitigates: CICD-SEC-6 (credential hygiene) via environment-scoped secrets,
 # same as bot-automation — but deliberately carries NO deployment branch
-# policy. origin-policy.yml runs on pull_request_target for fork PRs, and
-# GitHub evaluates environment branch policies for fork-triggered
-# pull_request_target runs against the PR's merge ref (refs/pull/N/merge),
-# never the base branch — so any branch-scoped policy here would silently
-# block the check on exactly the PRs it exists to police (see bot-automation
-# above, which is scoped to branches for its own different purpose and must
-# not be reused for this job).
+# policy. origin-policy.yml now runs on workflow_run (fed by
+# origin-policy-detect.yml), which always executes from the base repo's
+# default branch — so a branch-scoped policy here is both unnecessary and a
+# footgun: keep it unset. (Historically the job ran on pull_request_target,
+# where GitHub evaluates environment branch policies against the PR merge ref
+# refs/pull/N/merge rather than the base branch, so any branch policy silently
+# blocked the check on exactly the fork PRs it exists to police. bot-automation
+# above is scoped to branches for its own different purpose and must not be
+# reused for this job.)
 #
 # The security boundary for this App is its own narrow installation
 # permissions (Pull requests: read, Commit statuses: write — no Contents),
@@ -82,13 +84,21 @@ resource "github_repository_environment" "origin_policy" {
 
   # Required reviewers turn this credentialed job into a "wait for a write-access
   # human" gate: the origin-policy job (which mints the App token) sits in
-  # "Waiting for review" on every fork PR until a maintainer approves the
-  # deployment, and only then does the token step run. This is a deployment
-  # PROTECTION RULE, evaluated per-actor — NOT a branch policy — so unlike the
-  # deliberately-omitted deployment_branch_policy above, it is not evaluated
-  # against refs/pull/N/merge and does not misfire on fork pull_request_target
-  # runs. Credential-less tests (ci-tests.yml) carry no environment and are
-  # unaffected — they auto-run.
+  # "Waiting for review" until a maintainer approves the deployment, and only
+  # then does the token step run. This is a deployment PROTECTION RULE, evaluated
+  # per-actor — NOT a branch policy — so unlike the deliberately-omitted
+  # deployment_branch_policy above, it is not evaluated against refs/pull/N/merge.
+  # Credential-less tests (test.yml) carry no environment and auto-run.
+  #
+  # NOTE (workflow_run): the evaluator now runs on workflow_run, so the
+  # triggering actor is whoever triggered origin-policy-detect (the pusher on
+  # open/synchronize, or the REVIEWER on an approval), not always the fork
+  # author. That means EVERY fork-PR push and approval would queue a separate
+  # maintainer deployment approval here. If that is too heavy, drop this
+  # reviewers block — the security boundary is the App's narrow install perms,
+  # and prevent_self_review no longer maps cleanly to the fork author under
+  # workflow_run. Left in place pending that decision; the LIVE environment
+  # currently has no protection rules applied, so it does not yet engage.
   reviewers {
     teams = [github_team.maintainers.id]
   }

@@ -1,3 +1,6 @@
+# Scenario 1: 
+Based on: https://github.com/trezor/trezor-suite/pull/24825
+Evidence PR: https://github.com/trzr-mck/arrakis/pull/47
 <img width="1415" height="464" alt="image" src="https://github.com/user-attachments/assets/3170de54-9272-4a81-8184-f85d1312a6e7" />
 
 This scenario assumes that bots are created with least privilege, proper scope and provisioned for specific needs. Therefore that there are multiple bots. If a bot has write access or PR creating abilities, it's credentials should be locked down and its use should be scoped to a workflow.
@@ -13,5 +16,12 @@ Protection 4: [Only possible in private repos] push-based ruleset to lock workfl
 
 When pushing to branches created by bots, a separate ruleset will be created enforcing only the review of last commit is enough. There are edge cases where it would be possible to commit to a branch and then let bot commit to the branch again, but that's about workflow / credential hygiene. Mechanisms to check this do not natively exist and their implementation would be a **"šelmostroj"**. 
 
+# Scenario 2:
+The same attack vector just via fork is handled. However, there's one vector that can't be handled. A malicious user creates a sockpuppet account, forks the repo, creates the PR and approves it from his own work account. 
+The issue with this is that it can't be solved with native Github functionality. Branch rulesets only consider *target* branches, not source branches. Therefore trying to raise minimal PR count to 2 would increase it globally.
+Also creating a separate branch to merge forks into would create overhead with reconciling splits between develop and fork-develop. 
+The only thing that works for this usecase is a custom workflow, that is heavily guarded, runs only in context of the target branch and never executes user provided commands (should be also secure against command injection via metadata). 
+This workflow is defined in a ruleset as a check required to pass the PR. 
 
+<img width="901" height="534" alt="image" src="https://github.com/user-attachments/assets/b72a0329-a6cf-4d12-a3f8-bfc48c5f208c" />
 

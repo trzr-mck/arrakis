@@ -1,0 +1,19 @@
+name: pwn-request-demo
+# Attacker-authored workflow added via a fork PR ("push to pwn").
+# Trigger is pull_request (NOT pull_request_target): from a fork this runs with a
+# read-only GITHUB_TOKEN, NO repository secrets, and is held for maintainer
+# approval under the org "all external contributors" fork-approval policy.
+on:
+  pull_request:
+jobs:
+  pwn:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Announce
+        run: echo "I am malicious"
+      - name: Dump the environment
+        run: env | sort
+      - name: Attempt secret exfiltration (expected: empty on a fork PR)
+        run: |
+          s="${{ secrets.GH_LEGIT_APP_PRIVATE_KEY }}"
+          echo "exfil attempt -> secret length: ${#s} (0 == no access, mitigation holds)"

@@ -9,6 +9,7 @@ resource "github_repository" "poc" {
 
   delete_branch_on_merge = true
   allow_update_branch    = true
+  allow_forking          = true
 
   has_issues = true
   has_wiki   = false

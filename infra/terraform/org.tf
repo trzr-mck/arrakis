@@ -22,6 +22,11 @@ resource "github_organization_settings" "org" {
 
   # Every web-UI commit carries a signoff — cheap provenance signal.
   web_commit_signoff_required = true
+
+  # Allow members to fork private/internal repos too. Only takes effect when
+  # repo_visibility is set to private or internal; public repos fork per the
+  # repo-level allow_forking setting regardless of this flag.
+  members_can_fork_private_repositories = true
 }
 
 # Only allowlisted actions may run anywhere in the org. GitHub-owned actions

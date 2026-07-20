@@ -1,5 +1,4 @@
-# Terraform module — four-eyes hardening
-
+# RM
 Manages the GitHub org/repo controls that defeat the Trezor-style
 self-approval bypass. Authenticates as a **GitHub App installation**
 (`app_auth`) — no PATs anywhere.

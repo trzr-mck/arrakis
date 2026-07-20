@@ -1,0 +1,38 @@
+name: test
+
+# Runs on every push and every PR (including from forks) — the job mints no
+# App token and only ever reads files already in the checkout, so there's no
+# credential-theft surface to gate against. Kept on pull_request (not
+# pull_request_target) for that reason: it should be free to run against
+# untrusted fork code immediately, with no maintainer trigger required.
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    environment: tests
+    # The repo is private (see terraform.tfvars), so actions/checkout needs
+    # its default GITHUB_TOKEN scoped to at least contents:read — with the
+    # workflow-level permissions:{} above, that token has contents:none and
+    # git fetch fails with "Repository not found" (GitHub masks private repos
+    # from unauthorized callers rather than returning 403). Grant only what
+    # checkout needs, at the job level, rather than loosening the default.
+    permissions:
+      contents: read #This will not be needed for a public repo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pinned to 7.0.0
+
+      - name: Run helloworld.py and check its output
+        run: |
+          set -euo pipefail
+          output="$(python3 code/helloworld.py)"
+          if [[ "$output" != "hello world" ]]; then
+            echo "expected 'hello world', got '$output'" >&2
+            exit 1
+          fi
+          echo "ok: code/helloworld.py printed 'hello world'"

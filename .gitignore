@@ -1,0 +1,35 @@
+# Dependencies / build output
+node_modules/
+dist/
+build/
+
+# pnpm
+.pnpm-store/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS/editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets / credentials — never commit, anywhere in the tree.
+*.pem
+*.key
+secrets/
+terraform.tfvars
+*.auto.tfvars
+.env
+.env.*
+
+# Terraform local state / working dirs (remote backend is authoritative).
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+infra/scripts/docker-compose.yml infra/scripts/Dockerfile infra/scripts/github_audit_to_wazuh.py infra/scripts/__pycache__ infra/scripts/README.md infra/scripts/requirements.txt infra/scripts/systemd
+infra/scripts/docker-compose.yml infra/scripts/Dockerfile infra/scripts/github_audit_to_wazuh.py infra/scripts/__pycache__ infra/scripts/README.md infra/scripts/requirements.txt infra/scripts/systemd

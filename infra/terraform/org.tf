@@ -14,7 +14,7 @@ resource "github_organization_settings" "org" {
   # Prevent shadow repos outside the governed set. Blocking ALL member repo
   # creation (not just public) removes the unprotected-repo flank: only admins
   # provision repositories, and every repo is then born under the org ruleset
-  # in org_rulesets.tf. See THREAT_MODEL.md G2.
+  # in org_rulesets.tf.
   members_can_create_repositories          = false
   members_can_create_public_repositories   = false
   members_can_create_private_repositories  = false

@@ -92,7 +92,7 @@ variable "required_status_checks" {
 # for internal branch PRs (Vector A is already closed by the namespace lock +
 # require_last_push_approval, not by a second approval). The extra approval that
 # Vector B1 needs is applied to FORK PRs only, via a custom policy check —
-# rulesets cannot vary the count by PR source. See THREAT_MODEL.md G3 / §2.5.
+# rulesets cannot vary the count by PR source.
 variable "required_approving_review_count" {
   description = "Baseline approvals required on protected branches (applies to all PRs regardless of source; fork-specific escalation is a separate policy check)."
   type        = number

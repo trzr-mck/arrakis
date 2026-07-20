@@ -15,14 +15,8 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     environment: tests
-    # The repo is private (see terraform.tfvars), so actions/checkout needs
-    # its default GITHUB_TOKEN scoped to at least contents:read — with the
-    # workflow-level permissions:{} above, that token has contents:none and
-    # git fetch fails with "Repository not found" (GitHub masks private repos
-    # from unauthorized callers rather than returning 403). Grant only what
-    # checkout needs, at the job level, rather than loosening the default.
     permissions:
-      contents: read #This will not be needed for a public repo
+      contents: read 
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pinned to 7.0.0

@@ -79,6 +79,15 @@ variable "protected_branch_patterns" {
   default     = ["refs/heads/develop", "refs/heads/main", "refs/heads/release/**"]
 }
 
+variable "workflow_restricted_paths" {
+  description = "File-path globs that only the security team may push/modify (CI/CD config). Enforced by the workflow_authorship_lock ruleset on ALL branches; the security team is the sole bypass actor. Mirror any path added here in .github/CODEOWNERS so the merge-time code-owner review gate stays aligned with the push-time restriction."
+  type        = list(string)
+  # Matches every file under .github/workflows on any branch. Extend with
+  # ".github/CODEOWNERS" and/or ".github/**" to lock the ownership file and
+  # other pipeline config to the security team as well (defense in depth).
+  default = [".github/workflows/**"]
+}
+
 variable "required_status_checks" {
   description = "CI check contexts required before merge, mapped to the integration (App) ID whose statuses are trusted for that context. 0 means 'any source' — avoid it: anyone with write access can POST a forged success status, so always pin to the App that legitimately posts the check."
   type        = map(number)

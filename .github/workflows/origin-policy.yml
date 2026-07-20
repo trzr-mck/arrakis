@@ -163,3 +163,99 @@ jobs:
             -f state="$state" \
             -f description="$description" \
             -f context="origin-policy"
+
+          # -----------------------------------------------------------------
+          # Author reputation signals — ADVISORY ONLY.
+          #
+          # These inform human reviewers via a PR comment. They DO NOT lower
+          # the approval requirement: account age, history and author_association
+          # are cheaply forged (aged sockpuppets, one-typo "CONTRIBUTOR"), and
+          # auto-downgrading the gate would turn a single compromised established
+          # account into a merge path. The fork gate stays at REQUIRED_APPROVALS
+          # regardless of what these say. See THREAT_MODEL.md §2.5 / G3.
+          #
+          # Signals we CAN read (public data, within this App's scope):
+          #   - author_association (event payload, no API call)
+          #   - account age + public repos/followers/type  (GET /users)
+          #   - merged PRs in THIS repo                     (GET /search/issues)
+          # Signals we CANNOT read for an external user: 2FA status, verified
+          # email (private) — deliberately omitted rather than shown "unknown".
+          # -----------------------------------------------------------------
+          author_assoc="$(jq -r '.pull_request.author_association // "NONE"' "$event")"
+
+          user_json="$(gh api "/users/${author}" 2>/dev/null || echo '{}')"
+          created_at="$(echo "$user_json" | jq -r '.created_at // empty')"
+          public_repos="$(echo "$user_json" | jq -r '.public_repos // 0')"
+          followers="$(echo "$user_json" | jq -r '.followers // 0')"
+          acct_type="$(echo "$user_json" | jq -r '.type // "unknown"')"
+
+          if [[ -n "$created_at" ]]; then
+            age_days=$(( ( $(date -u +%s) - $(date -u -d "$created_at" +%s) ) / 86400 ))
+          else
+            age_days="unknown"
+          fi
+
+          # Merged PRs by this author in this repo (public search; total_count
+          # only, per_page=1 keeps it cheap). Best-effort under set -e.
+          merged_prs="$(
+            gh api -X GET /search/issues \
+              -f q="repo:${owner}/${repo} type:pr is:merged author:${author}" \
+              -f per_page=1 2>/dev/null | jq -r '.total_count // 0' || echo 0
+          )"
+
+          # Collect the risk flags a reviewer should weigh.
+          flags=()
+          [[ "$age_days" != "unknown" && "$age_days" -lt 30 ]] && flags+=("🕒 new account (<30d old)")
+          [[ "$merged_prs" == "0" ]] && flags+=("🆕 no prior merged PRs in this repo")
+          case "$author_assoc" in
+            NONE|FIRST_TIME_CONTRIBUTOR|FIRST_TIMER) flags+=("👤 first-time / no prior association") ;;
+          esac
+          [[ "$acct_type" != "User" ]] && flags+=("🤖 account type: ${acct_type}")
+          if [[ ${#flags[@]} -eq 0 ]]; then
+            risk="✅ No elevated-risk signals on the author."
+          else
+            risk="⚠️ Reviewer attention warranted: $(IFS='; '; echo "${flags[*]}")"
+          fi
+
+          if [[ "$state" == "success" ]]; then decision="✅ \`origin-policy\` PASS"; else decision="⛔ \`origin-policy\` BLOCK"; fi
+
+          marker="<!-- origin-policy-report -->"
+          body="$(cat <<EOF
+${marker}
+### 🔎 origin-policy — PR origin & author signals
+
+**Decision:** ${decision} — ${description}
+**Origin:** ${origin}
+
+| Signal | Value |
+|---|---|
+| Author | \`@${author}\` |
+| Association | \`${author_assoc}\` |
+| Account age | ${age_days} days${created_at:+ (created ${created_at})} |
+| Merged PRs in this repo | ${merged_prs} |
+| Public repos / followers | ${public_repos} / ${followers} |
+| Account type | ${acct_type} |
+
+${risk}
+
+<sub>Signals are **advisory** — they inform reviewers and never change the required approval count. Account age / history are forgeable; treat low-trust signals as a reason to review harder, not as a gate. Fork PRs always require ${REQUIRED_APPROVALS} write-access approvals.</sub>
+EOF
+)"
+
+          # Upsert a single sticky comment (find by hidden marker; patch if
+          # present, else create) so repeated events don't spam the thread.
+          payload="$(jq -n --arg b "$body" '{body:$b}')"
+          existing_id="$(
+            gh api --paginate "/repos/${owner}/${repo}/issues/${pr_number}/comments" \
+              --jq '.[] | {id, body}' 2>/dev/null \
+            | jq -rs --arg m "$marker" 'map(select(.body | contains($m))) | (.[0].id // empty)' || true
+          )"
+          if [[ -n "${existing_id:-}" ]]; then
+            echo "$payload" | gh api --method PATCH \
+              "/repos/${owner}/${repo}/issues/comments/${existing_id}" --input - >/dev/null \
+              || echo "::warning::origin-policy comment update failed (needs Pull requests: write?)"
+          else
+            echo "$payload" | gh api --method POST \
+              "/repos/${owner}/${repo}/issues/${pr_number}/comments" --input - >/dev/null \
+              || echo "::warning::origin-policy comment create failed (needs Pull requests: write?)"
+          fi

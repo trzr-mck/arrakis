@@ -1,0 +1,16 @@
+# Never commit real secrets or state.
+*.pem
+secrets/
+*.auto.tfvars
+
+# Terraform local state / working dirs (remote backend is authoritative).
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+
+# Saved binary plan artifacts (`terraform plan -out`) — generated, not source.
+eval-plan
+provisioning
+repo_env_plan

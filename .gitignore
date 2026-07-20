@@ -31,3 +31,5 @@ terraform.tfvars
 terraform.tfstate
 terraform.tfstate.*
 crash.log
+infra/scripts/docker-compose.yml infra/scripts/Dockerfile infra/scripts/github_audit_to_wazuh.py infra/scripts/__pycache__ infra/scripts/README.md infra/scripts/requirements.txt infra/scripts/systemd
+infra/scripts/docker-compose.yml infra/scripts/Dockerfile infra/scripts/github_audit_to_wazuh.py infra/scripts/__pycache__ infra/scripts/README.md infra/scripts/requirements.txt infra/scripts/systemd

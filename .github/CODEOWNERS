@@ -1,0 +1,6 @@
+*                                                    @trzr-mck/maintainers
+# All workflows must be owned by security-team / devsecops team
+/.github/**                                          @trzr-mck/security-team
+/.github/workflows/                                  @trzr-mck/security-team
+/code                                                @trzr-mck/maintainers
+

@@ -1,27 +1,6 @@
-# CODEOWNERS — ordered general → specific (GitHub applies the LAST matching rule).
-# Placeholders are resolved before use; see README.
-
-# Default owner for everything.
 *                                                    @trzr-mck/maintainers
-
-# CI/automation config is owned by security.
+# All workflows must be owned by security-team / devsecops team
 /.github/**                                          @trzr-mck/security-team
-
-# Workflow authorship is explicitly security-team-only. GitHub has no separate
-# "who may create workflows" permission; this CODEOWNERS rule + code-owner
-# review IS that control — any added/changed workflow needs security-team sign-off.
 /.github/workflows/                                  @trzr-mck/security-team
+/code                                                @trzr-mck/maintainers
 
-# Workspace + lockfile changes are owned by security.
-# NOTE: CODEOWNERS accepts exactly one pattern per line — multiple patterns on
-# a single line are invalid syntax and GitHub silently skips the line.
-/package.json                                        @trzr-mck/security-team
-/pnpm-workspace.yaml                                 @trzr-mck/security-team
-/pnpm-lock.yaml                                      @trzr-mck/security-team
-
-# Per-package manifests and tsconfigs are owned by security.
-/packages/*/package.json                             @trzr-mck/security-team
-/packages/*/tsconfig.json                            @trzr-mck/security-team
-
-# Single-user owner for one path (CODEOWNERS enforcement fixture).
-/packages/app/src/components/HelloWorld.tsx          @0x64nl

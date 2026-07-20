@@ -1,11 +1,11 @@
 name: origin-policy
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   pull_request_review:
     types: [submitted, dismissed]
 
-permissions: {}  
+permissions: {}
 
 jobs:
   enforce:
@@ -15,7 +15,7 @@ jobs:
 
       - name: Generate App token
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # pinned to 3.2.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # 3.2.0
         with:
           client-id: ${{ vars.ORIGIN_POLICY_APP_ID }}
           private-key: ${{ secrets.ORIGIN_POLICY_APP_PRIVATE_KEY }}
@@ -26,12 +26,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REQUIRED_APPROVALS: "2"
-          # Branch namespaces locked by a repository ruleset so ONLY the owning
-          # App can write them (infra/terraform/rulesets.tf -> bot_namespace).
-          # Comma/space separated. A same-repo PR whose head sits under one of
-          # these was necessarily produced by that scoped bot (humans are
-          # ruleset-blocked from pushing there), so it rides the normal
-          # single-approval four-eyes path instead of the fork +1 gate.
           BOT_BRANCH_PREFIXES: "poc-ci-bot/"
         shell: bash
         run: |
@@ -45,15 +39,22 @@ jobs:
           head_sha="$(jq -r '.pull_request.head.sha' "$event")"
           head_ref="$(jq -r '.pull_request.head.ref' "$event")"
           base_repo="$(jq -r '.pull_request.base.repo.full_name' "$event")"
-          # Empty when the fork repo has been deleted — treat that as external too.
           head_repo="$(jq -r '.pull_request.head.repo.full_name // ""' "$event")"
 
+          # Fail LOUDLY on permission/scope errors; only a clean 404
+          # ("not a collaborator") maps to "none". A silent 403->none would
+          # both misclassify internal PRs and zero out all approval counts.
           repo_permission() {
-            local login="$1" resp
-            if ! resp="$(gh api "/repos/${owner}/${repo}/collaborators/${login}/permission" 2>/dev/null)"; then
+            local login="$1" resp status
+            resp="$(gh api "/repos/${owner}/${repo}/collaborators/${login}/permission" 2>&1)" \
+              && { jq -r '.permission // "none"' <<<"$resp"; return; }
+            status=$?
+            if grep -q "HTTP 404" <<<"$resp"; then
               echo "none"; return
             fi
-            echo "$resp" | jq -r '.permission // "none"'
+            echo "::error::permission lookup for '${login}' failed (not 404) — check App scopes" >&2
+            echo "$resp" >&2
+            exit "$status"
           }
 
           has_write() {
@@ -63,9 +64,6 @@ jobs:
             esac
           }
 
-          # A same-repo head ref under a ruleset-locked bot namespace can only
-          # have been written by the owning App (the namespace ruleset blocks all
-          # human pushes there), so such a PR is trusted scoped automation.
           IFS=', ' read -r -a bot_prefixes <<< "${BOT_BRANCH_PREFIXES:-}"
           is_bot_branch() {
             local ref="$1" p
@@ -75,28 +73,12 @@ jobs:
             return 1
           }
 
-          # Classify the PR. Only fork/external-origin PRs — and the anomalous
-          # case of an internal branch whose author is neither a write-access
-          # human nor a scoped bot — get the elevated 2-approval fork gate.
-          # Internal write-user PRs and scoped-bot PRs rely on the branch
-          # ruleset's normal single code-owner review (still four-eyes: the bot
-          # cannot approve, and require_last_push_approval blocks self-approval).
-          # FUTURE (planned): fork PRs unconditionally require 2 approvals today.
-          # A later iteration can fold in a contributor-trust score before this
-          # branch — e.g. GitHub account age, prior merged-PR / commit history in
-          # this org, 2FA-enabled, verified email, org-membership — and once a
-          # fork author clears that bar, route them to the single-review path
-          # (elevated=false) so a trusted external contributor is accepted after
-          # 1 review instead of 2. Keep 2 approvals as the safe default for
-          # unknown / low-trust authors, and derive the score from signals the
-          # author cannot cheaply forge (sockpuppet accounts are new, historyless,
-          # and unverified — exactly what such classifiers would catch).
           if [[ -z "$head_repo" || "$head_repo" != "$base_repo" ]]; then
             elevated=true;  origin="fork/external-origin PR"
           elif has_write "$author"; then
             elevated=false; origin="internal PR from a write-access collaborator"
           elif is_bot_branch "$head_ref"; then
-            elevated=false; origin="scoped automation in locked namespace ${head_ref}"
+            elevated=false; origin="scoped automation in locked namespace"
           else
             elevated=true;  origin="internal PR from a non-write, non-bot author"
           fi
@@ -105,21 +87,30 @@ jobs:
             state="success"
             description="${origin} — four-eyes enforced by branch ruleset"
           else
-            # Elevated gate: require REQUIRED_APPROVALS approvals from write-access
-            # users, excluding both the PR's opening author AND whoever authored
-            # the current head commit. These can differ (e.g. a bot opens the PR,
-            # a human pushes a later commit) — anchoring only on $author lets that
-            # human's own approval of their own push count toward the requirement,
-            # the same self-approval-via-non-authorship bypass this policy closes.
-            # Pulled via the pull-requests commits list (Pull requests: read),
-            # not the commits API (which needs Contents: read) — this App is
-            # scoped to PR/review/status access only.
-            head_pusher="$(
+            # Exclude EVERY login appearing as author or committer on ANY
+            # commit in the PR, plus the PR opener. Rationale: commit
+            # author/committer logins are resolved from attacker-chosen email
+            # metadata, so a "who pushed the head commit" exclusion is
+            # spoofable. A blanket participant exclusion is fail-closed:
+            # forged emails can only REMOVE eligible approvers, never restore
+            # the forger's own eligibility for a commit they signed as
+            # someone else. The authoritative anti-self-approval control is
+            # the ruleset's require_last_push_approval (server-side pusher
+            # identity); this is defense-in-depth on top of it.
+            mapfile -t participants < <(
               gh api --paginate "/repos/${owner}/${repo}/pulls/${pr_number}/commits" \
-                --jq '.[] | {sha: .sha, login: (.author.login // .committer.login // "")}' \
-              | jq -rs --arg sha "$head_sha" '.[] | select(.sha == $sha) | .login' \
-              | tail -n1
-            )"
+                --jq '.[] | (.author.login // empty), (.committer.login // empty)' \
+              | sort -u
+            )
+
+            excluded() {
+              local login="$1" p
+              [[ "$login" == "$author" ]] && return 0
+              for p in "${participants[@]}"; do
+                [[ "$login" == "$p" ]] && return 0
+              done
+              return 1
+            }
 
             latest_json="$(
               gh api --paginate \
@@ -129,12 +120,10 @@ jobs:
             )"
 
             mapfile -t candidates < <(
-              echo "$latest_json" | jq -r --arg sha "$head_sha" --arg author "$author" --arg pusher "$head_pusher" '
+              echo "$latest_json" | jq -r --arg sha "$head_sha" '
                 to_entries[]
                 | select(.value.state == "APPROVED")
                 | select(.value.commit_id == $sha)
-                | select(.key != $author)
-                | select($pusher == "" or .key != $pusher)
                 | .key
               '
             )
@@ -142,6 +131,7 @@ jobs:
             approvals=0
             for login in "${candidates[@]}"; do
               [[ -z "$login" || "$login" == "null" ]] && continue
+              excluded "$login" && continue
               has_write "$login" && approvals=$((approvals + 1))
             done
 
